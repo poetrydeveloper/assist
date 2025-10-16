@@ -30,6 +30,7 @@ export default function ProjectDetail() {
   const [editingStepId, setEditingStepId] = useState<string | null>(null)
   const [aiResponse, setAiResponse] = useState('')
   const [savingAiResponse, setSavingAiResponse] = useState(false)
+  const [deletingStepId, setDeletingStepId] = useState<string | null>(null)
 
   const projectId = params.id as string
 
@@ -45,7 +46,13 @@ export default function ProjectDetail() {
       const response = await fetch(`/api/projects/${projectId}`)
       
       if (!response.ok) {
-        throw new Error('Проект не найден')
+        // ИСПРАВЛЕНИЕ: не бросаем ошибку, а устанавливаем project в null
+        if (response.status === 404) {
+          setProject(null)
+          setLoading(false)
+          return
+        }
+        throw new Error(`HTTP error! status: ${response.status}`)
       }
       
       const data = await response.json()
@@ -53,6 +60,7 @@ export default function ProjectDetail() {
       setProject(data)
     } catch (error) {
       console.error('❌ Ошибка загрузки проекта:', error)
+      setProject(null)
     } finally {
       setLoading(false)
     }
@@ -83,9 +91,11 @@ export default function ProjectDetail() {
         fetchProject() // Обновляем данные проекта
       } else {
         console.error('❌ Ошибка добавления шага')
+        alert('Не удалось добавить шаг')
       }
     } catch (error) {
       console.error('❌ Не удалось добавить шаг:', error)
+      alert('Не удалось добавить шаг')
     } finally {
       setAddingStep(false)
     }
@@ -114,9 +124,12 @@ export default function ProjectDetail() {
         setEditingStepId(null)
         setAiResponse('')
         fetchProject() // Обновляем данные
+      } else {
+        alert('Не удалось сохранить ответ ИИ')
       }
     } catch (error) {
       console.error('❌ Не удалось сохранить ответ ИИ:', error)
+      alert('Не удалось сохранить ответ ИИ')
     } finally {
       setSavingAiResponse(false)
     }
@@ -130,6 +143,33 @@ export default function ProjectDetail() {
   const cancelEditing = () => {
     setEditingStepId(null)
     setAiResponse('')
+  }
+
+  const deleteStep = async (stepId: string) => {
+    if (!confirm('Вы уверены, что хотите удалить этот шаг?')) {
+      return
+    }
+
+    setDeletingStepId(stepId)
+    try {
+      const response = await fetch(`/api/steps/${stepId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        console.log('✅ Шаг удален')
+        fetchProject() // Обновляем данные
+      } else {
+        const error = await response.json()
+        console.error('❌ Ошибка удаления:', error)
+        alert('Не удалось удалить шаг')
+      }
+    } catch (error) {
+      console.error('❌ Не удалось удалить шаг:', error)
+      alert('Не удалось удалить шаг')
+    } finally {
+      setDeletingStepId(null)
+    }
   }
 
   if (loading) {
@@ -151,9 +191,10 @@ export default function ProjectDetail() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center py-12">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Проект не найден</h2>
+            <p className="text-gray-600 mb-4">Проект с ID "{projectId}" не существует или был удален.</p>
             <button 
               onClick={() => router.push('/')}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg"
+              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors"
             >
               На главную
             </button>
@@ -169,7 +210,7 @@ export default function ProjectDetail() {
         {/* Кнопка назад */}
         <button 
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-6"
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-6 transition-colors"
         >
           <span>←</span>
           Назад к проектам
@@ -177,40 +218,42 @@ export default function ProjectDetail() {
 
         {/* Заголовок проекта */}
         <div className="flex justify-between items-start mb-8">
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{project.title}</h1>
             {project.description && (
               <p className="text-gray-600 text-lg mb-3 whitespace-pre-wrap">{project.description}</p>
             )}
-            <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <h3 className="font-semibold text-blue-900 mb-1">🎯 Цель обучения:</h3>
               <p className="text-blue-800">{project.goal}</p>
             </div>
           </div>
-          <button
-            onClick={exportSQL}
-            className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-          >
-            Экспорт SQL
-          </button>
+          <div className="flex-shrink-0 ml-6">
+            <button
+              onClick={exportSQL}
+              className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap"
+            >
+              Экспорт SQL
+            </button>
+          </div>
         </div>
 
         {/* Форма добавления шага */}
-        <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+        <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 mb-8">
           <h2 className="text-xl font-semibold mb-4">📝 Добавить шаг прогресса</h2>
           <form onSubmit={addStep}>
             <textarea
               value={newStep}
               onChange={(e) => setNewStep(e.target.value)}
               placeholder="Что вы узнали? Какой прогресс сделали? Какие уроки прошли?"
-              className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4 transition-colors"
               rows={4}
             />
             <div className="flex justify-between items-center">
               <button
                 type="submit"
                 disabled={addingStep || !newStep.trim()}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold disabled:opacity-50 transition-colors"
+                className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
               >
                 {addingStep ? 'Добавляем...' : 'Добавить шаг'}
               </button>
@@ -222,8 +265,8 @@ export default function ProjectDetail() {
         </div>
 
         {/* Список шагов */}
-        <div className="bg-white rounded-lg shadow-md">
-          <div className="p-6 border-b">
+        <div className="bg-white rounded-lg shadow-md border border-gray-200">
+          <div className="p-6 border-b border-gray-200">
             <h2 className="text-xl font-semibold">📊 Хронология прогресса</h2>
             <p className="text-gray-600 text-sm mt-1">
               Всего шагов: {project.steps.length}
@@ -239,19 +282,30 @@ export default function ProjectDetail() {
               </p>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-gray-200">
               {project.steps.map((step, index) => (
-                <div key={step.id} className="p-6 hover:bg-gray-50 transition-colors">
+                <div key={step.id} className="p-6 hover:bg-gray-50 transition-colors group">
                   <div className="flex items-start gap-4">
                     <div className="flex-shrink-0 w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
                       {index + 1}
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start mb-2">
-                        <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                          {step.type || 'заметка'}
-                        </span>
-                        <span className="text-sm text-gray-500">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                            {step.type || 'заметка'}
+                          </span>
+                          {/* Кнопка удаления шага */}
+                          <button
+                            onClick={() => deleteStep(step.id)}
+                            disabled={deletingStepId === step.id}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 text-sm disabled:opacity-50"
+                            title="Удалить шаг"
+                          >
+                            {deletingStepId === step.id ? '🗑️ Удаляем...' : '🗑️ Удалить'}
+                          </button>
+                        </div>
+                        <span className="text-sm text-gray-500 whitespace-nowrap">
                           {new Date(step.createdAt).toLocaleDateString('ru-RU', {
                             day: 'numeric',
                             month: 'long',
@@ -273,12 +327,14 @@ export default function ProjectDetail() {
                               <span>🤖</span>
                               <span>AI Рекомендация</span>
                             </div>
-                            <button
-                              onClick={() => startEditingAiResponse(step)}
-                              className="text-green-600 hover:text-green-800 text-sm"
-                            >
-                              ✏️ Редактировать
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => startEditingAiResponse(step)}
+                                className="text-green-600 hover:text-green-800 text-sm transition-colors"
+                              >
+                                ✏️ Редактировать
+                              </button>
+                            </div>
                           </div>
                           <p className="text-green-700 whitespace-pre-wrap text-sm">
                             {step.aiResponse}
@@ -294,20 +350,20 @@ export default function ProjectDetail() {
                             value={aiResponse}
                             onChange={(e) => setAiResponse(e.target.value)}
                             placeholder="Вставьте сюда ответ от ИИ-помощника..."
-                            className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+                            className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3 transition-colors"
                             rows={6}
                           />
                           <div className="flex gap-2">
                             <button
                               onClick={() => saveAiResponse(step.id)}
                               disabled={savingAiResponse || !aiResponse.trim()}
-                              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+                              className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-4 py-2 rounded text-sm transition-colors"
                             >
                               {savingAiResponse ? 'Сохранение...' : 'Сохранить'}
                             </button>
                             <button
                               onClick={cancelEditing}
-                              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"
+                              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm transition-colors"
                             >
                               Отмена
                             </button>
@@ -318,7 +374,7 @@ export default function ProjectDetail() {
                         <div className="mt-4">
                           <button
                             onClick={() => startEditingAiResponse(step)}
-                            className="flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            className="flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
                           >
                             <span>🤖</span>
                             <span>Добавить ответ ИИ</span>
